@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Download, RotateCcw, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Download, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
 import { getFormById } from '../data/forms';
 import type { FormDefinition, FormField } from '../data/forms';
 import SignatureCanvas from '../components/SignatureCanvas';
@@ -17,64 +17,29 @@ export default function FormView() {
     [formId]
   );
 
-  const storageKey = useMemo(() => `form_${formId || ''}`, [formId]);
-
   // Today's date in YYYY-MM-DD (timezone-safe)
   const todayStr = useMemo(() => new Date().toLocaleDateString('sv'), []);
 
-  // Load initial values from localStorage; pre-fill date fields with today if empty
+  // Start fresh every time — date fields get today's date
   const initialValues = useMemo(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      const stored: Record<string, string> = saved ? JSON.parse(saved) : {};
-      for (const field of form?.fields ?? []) {
-        if (field.type === 'date' && !stored[field.id]) {
-          stored[field.id] = todayStr;
-        }
-      }
-      return stored;
-    } catch {
-      return {};
+    const vals: Record<string, string> = {};
+    for (const field of form?.fields ?? []) {
+      if (field.type === 'date') vals[field.id] = todayStr;
     }
-  }, [storageKey, form, todayStr]);
+    return vals;
+  }, [form, todayStr]);
 
   const [values, setValues] = useState<Record<string, string>>(initialValues);
-  const [saved, setSaved] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
 
-  // Auto-save to localStorage when values change
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(values));
-        setSaved(true);
-        const hideTimer = setTimeout(() => setSaved(false), 2000);
-        return () => clearTimeout(hideTimer);
-      } catch {
-        // ignore storage errors
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [values, storageKey]);
-
-  // Simple direct change handler - no useCallback to avoid stale closure issues
   const handleChange = (fieldId: string, value: string) => {
-    setValues((prev) => {
-      const next = { ...prev, [fieldId]: value };
-      return next;
-    });
-    setSaved(false);
+    setValues((prev) => ({ ...prev, [fieldId]: value }));
   };
 
   const handleReset = () => {
     if (window.confirm('Formdaki tum veriler silinecek. Emin misiniz?')) {
-      setValues({});
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore
-      }
+      setValues(initialValues);
     }
   };
 
@@ -91,7 +56,6 @@ export default function FormView() {
     try {
       const { blob, filename } = await buildFormPDFBlob(formRef.current, form.id, tc, adSoyad);
       await uploadToDrive(blob, filename);
-      try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
       navigate(-1);
     } catch (err) {
       console.error('Drive upload failed:', err);
@@ -383,14 +347,7 @@ export default function FormView() {
             Sifirla
           </button>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            {saved && (
-              <>
-                <Check size={14} className="text-emerald-500" />
-                <span className="text-emerald-600">Kaydedildi</span>
-              </>
-            )}
-          </div>
+          <div />
 
           <button
             onClick={handleExport}
