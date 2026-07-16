@@ -26,11 +26,26 @@ async function buildPDF(
     scrollX: -window.scrollX,
     scrollY: -window.scrollY,
     onclone: (_doc, cloned) => {
+      // Hide UI-only buttons (Temizle, Sifirla, etc.)
+      cloned.querySelectorAll('button').forEach((btn) => {
+        (btn as HTMLElement).style.display = 'none';
+      });
+
+      // Copy field values — both .value and setAttribute so html2canvas renders them
       const origFields = formElement.querySelectorAll('input, textarea, select');
       const clonedFields = cloned.querySelectorAll('input, textarea, select');
       origFields.forEach((orig, i) => {
-        const el = clonedFields[i] as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-        if (el) el.value = (orig as HTMLInputElement).value;
+        const clonedEl = clonedFields[i] as HTMLInputElement | HTMLTextAreaElement;
+        if (!clonedEl) return;
+        const value = (orig as HTMLInputElement).value;
+        clonedEl.value = value;
+        clonedEl.setAttribute('value', value);
+        if (orig.tagName === 'TEXTAREA') {
+          (clonedEl as HTMLTextAreaElement).textContent = value;
+        }
+        if ((orig as HTMLInputElement).type === 'radio' || (orig as HTMLInputElement).type === 'checkbox') {
+          (clonedEl as HTMLInputElement).checked = (orig as HTMLInputElement).checked;
+        }
       });
     },
   });
