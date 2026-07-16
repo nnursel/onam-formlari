@@ -21,10 +21,10 @@ async function buildPDF(
     useCORS: true,
     logging: false,
     backgroundColor: '#FFFFFF',
-    windowWidth: 1200,
-    windowHeight: formElement.scrollHeight,
-    scrollX: 0,
-    scrollY: 0,
+    windowWidth: window.innerWidth,
+    windowHeight: window.innerHeight,
+    scrollX: -window.scrollX,
+    scrollY: -window.scrollY,
   });
 
   const pdf = new jsPDF('p', 'mm', 'a4');
