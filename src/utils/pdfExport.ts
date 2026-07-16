@@ -1,10 +1,21 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-export async function exportFormToPDF(formElement: HTMLElement, formTitle: string): Promise<void> {
-  const filename = `${formTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+export interface ExportResult {
+  blob: Blob;
+  filename: string;
+}
 
-  // Show loading state
+async function buildPDF(
+  formElement: HTMLElement,
+  _formId: string,
+  tc?: string,
+  adSoyad?: string,
+): Promise<{ pdf: jsPDF; filename: string }> {
+  const safeName = (adSoyad ?? '').trim().replace(/\s+/g, '_').toUpperCase() || 'HASTA';
+  const safeTC = (tc ?? '').trim() || 'TC';
+  const filename = `${safeTC}_${safeName}.pdf`;
+
   const canvas = await html2canvas(formElement, {
     scale: 2,
     useCORS: true,
@@ -20,24 +31,40 @@ export async function exportFormToPDF(formElement: HTMLElement, formTitle: strin
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = pdf.internal.pageSize.getHeight();
   const margin = 10;
-
   const imgWidth = pdfWidth - margin * 2;
   const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-  let heightLeft = imgHeight;
-  let position = 0;
-
-  // Add first page
   pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
-  heightLeft -= (pdfHeight - margin * 2);
+  let heightLeft = imgHeight - (pdfHeight - margin * 2);
 
-  // Add additional pages if content overflows
   while (heightLeft > 0) {
-    position = heightLeft - imgHeight + margin;
+    const position = heightLeft - imgHeight + margin;
     pdf.addPage();
     pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-    heightLeft -= (pdfHeight - margin * 2);
+    heightLeft -= pdfHeight - margin * 2;
   }
 
+  return { pdf, filename };
+}
+
+/** Download PDF to local computer. */
+export async function exportFormToPDF(
+  formElement: HTMLElement,
+  formId: string,
+  tc?: string,
+  adSoyad?: string,
+): Promise<void> {
+  const { pdf, filename } = await buildPDF(formElement, formId, tc, adSoyad);
   pdf.save(filename);
+}
+
+/** Build PDF and return blob + filename (for Drive upload). */
+export async function buildFormPDFBlob(
+  formElement: HTMLElement,
+  formId: string,
+  tc?: string,
+  adSoyad?: string,
+): Promise<ExportResult> {
+  const { pdf, filename } = await buildPDF(formElement, formId, tc, adSoyad);
+  return { blob: pdf.output('blob'), filename };
 }

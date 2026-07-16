@@ -4,7 +4,8 @@ import { ArrowLeft, Download, RotateCcw, Check, Loader2, AlertTriangle } from 'l
 import { getFormById } from '../data/forms';
 import type { FormDefinition, FormField } from '../data/forms';
 import SignatureCanvas from '../components/SignatureCanvas';
-import { exportFormToPDF } from '../utils/pdfExport';
+import { buildFormPDFBlob } from '../utils/pdfExport';
+import { uploadToDrive } from '../utils/googleDrive';
 
 export default function FormView() {
   const { formId } = useParams<{ formId: string }>();
@@ -40,6 +41,7 @@ export default function FormView() {
   const [values, setValues] = useState<Record<string, string>>(initialValues);
   const [saved, setSaved] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
 
   // Auto-save to localStorage when values change
   useEffect(() => {
@@ -76,14 +78,24 @@ export default function FormView() {
     }
   };
 
+  const getPatientInfo = () => ({
+    tc: values['tc_kimlik_no'] ?? '',
+    adSoyad: values['ad_soyad_onay'] ?? values['hasta_ad_soyad'] ?? '',
+  });
+
   const handleExport = async () => {
     if (!formRef.current || !form) return;
     setExporting(true);
+    setDriveError(null);
+    const { tc, adSoyad } = getPatientInfo();
     try {
-      await exportFormToPDF(formRef.current, form.id);
+      const { blob, filename } = await buildFormPDFBlob(formRef.current, form.id, tc, adSoyad);
+      await uploadToDrive(blob, filename);
+      try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+      navigate(-1);
     } catch (err) {
-      console.error('PDF export failed:', err);
-      alert('PDF olusturulurken bir hata olustu.');
+      console.error('Drive upload failed:', err);
+      setDriveError(err instanceof Error ? err.message : 'Drive yükleme başarısız');
     } finally {
       setExporting(false);
     }
@@ -350,15 +362,25 @@ export default function FormView() {
         </div>
       </div>
 
+      {/* Drive error feedback */}
+      {driveError && (
+        <div className="fixed bottom-[68px] left-0 right-0 flex justify-center px-4 z-40 pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium bg-red-50 border border-red-200 text-red-700">
+            <AlertTriangle size={15} className="shrink-0" />
+            <span>{driveError}</span>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 lg:px-6 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-40">
-        <div className="max-w-[800px] mx-auto flex items-center justify-between">
+        <div className="max-w-[800px] mx-auto flex items-center justify-between gap-2">
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors"
+            className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors shrink-0"
           >
             <RotateCcw size={16} />
-            Formu Sifirla
+            Sifirla
           </button>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -373,10 +395,10 @@ export default function FormView() {
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 disabled:bg-teal-400 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+            className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 disabled:bg-teal-400 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors shrink-0"
           >
             {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            PDF Olarak Indir
+            Drive'a Kaydet
           </button>
         </div>
       </div>
