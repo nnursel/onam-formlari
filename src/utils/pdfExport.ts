@@ -25,6 +25,14 @@ async function buildPDF(
     windowHeight: window.innerHeight,
     scrollX: -window.scrollX,
     scrollY: -window.scrollY,
+    onclone: (_doc, cloned) => {
+      const origFields = formElement.querySelectorAll('input, textarea, select');
+      const clonedFields = cloned.querySelectorAll('input, textarea, select');
+      origFields.forEach((orig, i) => {
+        const el = clonedFields[i] as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+        if (el) el.value = (orig as HTMLInputElement).value;
+      });
+    },
   });
 
   const pdf = new jsPDF('p', 'mm', 'a4');
