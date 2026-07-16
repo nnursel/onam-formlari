@@ -16,6 +16,19 @@ async function buildPDF(
   const safeTC = (tc ?? '').trim() || 'TC';
   const filename = `${safeTC}_${safeName}.pdf`;
 
+  // Tag fillable fields so we can find them in the clone
+  const textEls = Array.from(
+    formElement.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      'input:not([type="radio"]):not([type="checkbox"]), textarea'
+    )
+  );
+  textEls.forEach((el, i) => el.setAttribute('data-pdf-i', String(i)));
+
+  const radioEls = Array.from(
+    formElement.querySelectorAll<HTMLInputElement>('input[type="radio"], input[type="checkbox"]')
+  );
+  radioEls.forEach((el, i) => el.setAttribute('data-pdf-r', String(i)));
+
   const canvas = await html2canvas(formElement, {
     scale: 2,
     useCORS: true,
@@ -26,29 +39,58 @@ async function buildPDF(
     scrollX: -window.scrollX,
     scrollY: -window.scrollY,
     onclone: (_doc, cloned) => {
-      // Hide UI-only buttons (Temizle, Sifirla, etc.)
+      // Hide UI-only buttons (Temizle, Sifirla vb.)
       cloned.querySelectorAll('button').forEach((btn) => {
         (btn as HTMLElement).style.display = 'none';
       });
 
-      // Copy field values — both .value and setAttribute so html2canvas renders them
-      const origFields = formElement.querySelectorAll('input, textarea, select');
-      const clonedFields = cloned.querySelectorAll('input, textarea, select');
-      origFields.forEach((orig, i) => {
-        const clonedEl = clonedFields[i] as HTMLInputElement | HTMLTextAreaElement;
-        if (!clonedEl) return;
-        const value = (orig as HTMLInputElement).value;
-        clonedEl.value = value;
-        clonedEl.setAttribute('value', value);
-        if (orig.tagName === 'TEXTAREA') {
-          (clonedEl as HTMLTextAreaElement).textContent = value;
+      // Replace each text input / textarea with a styled div showing the actual value
+      cloned.querySelectorAll<HTMLElement>('[data-pdf-i]').forEach((clonedEl) => {
+        const idx = Number(clonedEl.getAttribute('data-pdf-i'));
+        const origEl = textEls[idx];
+        if (!origEl) return;
+
+        const value = origEl.value;
+        const cs = window.getComputedStyle(origEl);
+        const isTextarea = origEl.tagName === 'TEXTAREA';
+
+        const div = document.createElement('div');
+        div.textContent = value;
+        div.style.width = cs.width;
+        div.style.minHeight = cs.height;
+        div.style.padding = cs.padding;
+        div.style.border = cs.border;
+        div.style.borderRadius = cs.borderRadius;
+        div.style.fontSize = cs.fontSize;
+        div.style.fontFamily = cs.fontFamily;
+        div.style.color = '#1a3a6b';
+        div.style.backgroundColor = cs.backgroundColor || '#ffffff';
+        div.style.boxSizing = 'border-box';
+        div.style.overflow = 'hidden';
+        if (isTextarea) {
+          div.style.whiteSpace = 'pre-wrap';
+          div.style.alignItems = 'flex-start';
+        } else {
+          div.style.display = 'flex';
+          div.style.alignItems = 'center';
+          div.style.whiteSpace = 'nowrap';
         }
-        if ((orig as HTMLInputElement).type === 'radio' || (orig as HTMLInputElement).type === 'checkbox') {
-          (clonedEl as HTMLInputElement).checked = (orig as HTMLInputElement).checked;
-        }
+
+        clonedEl.parentNode?.replaceChild(div, clonedEl);
+      });
+
+      // Sync radio / checkbox checked state
+      cloned.querySelectorAll<HTMLInputElement>('[data-pdf-r]').forEach((clonedEl) => {
+        const idx = Number(clonedEl.getAttribute('data-pdf-r'));
+        const origEl = radioEls[idx];
+        if (origEl) clonedEl.checked = origEl.checked;
       });
     },
   });
+
+  // Remove temporary attributes
+  textEls.forEach((el) => el.removeAttribute('data-pdf-i'));
+  radioEls.forEach((el) => el.removeAttribute('data-pdf-r'));
 
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -89,7 +131,6 @@ async function buildPDF(
   return { pdf, filename };
 }
 
-/** Download PDF to local computer. */
 export async function exportFormToPDF(
   formElement: HTMLElement,
   formId: string,
@@ -100,7 +141,6 @@ export async function exportFormToPDF(
   pdf.save(filename);
 }
 
-/** Build PDF and return blob + filename (for Drive upload). */
 export async function buildFormPDFBlob(
   formElement: HTMLElement,
   formId: string,
