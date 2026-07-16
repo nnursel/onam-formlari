@@ -16,6 +16,11 @@ async function buildPDF(
   const safeTC = (tc ?? '').trim() || 'TC';
   const filename = `${safeTC}_${safeName}.pdf`;
 
+  // Read canvas data BEFORE html2canvas (mobile scroll/keyboard can clear canvas later)
+  const canvasSnapshots = Array.from(formElement.querySelectorAll('canvas')).map((c) => {
+    try { return (c as HTMLCanvasElement).toDataURL('image/png'); } catch { return ''; }
+  });
+
   // Tag fillable fields so we can find them in the clone
   const textEls = Array.from(
     formElement.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
@@ -34,10 +39,10 @@ async function buildPDF(
     useCORS: true,
     logging: false,
     backgroundColor: '#FFFFFF',
-    windowWidth: window.innerWidth,
-    windowHeight: window.innerHeight,
-    scrollX: -window.scrollX,
-    scrollY: -window.scrollY,
+    windowWidth: 1200,
+    windowHeight: formElement.scrollHeight,
+    scrollX: 0,
+    scrollY: 0,
     onclone: (_doc, cloned) => {
       // Hide UI-only buttons (Temizle, Sifirla vb.)
       cloned.querySelectorAll('button').forEach((btn) => {
@@ -86,23 +91,16 @@ async function buildPDF(
         if (origEl) clonedEl.checked = origEl.checked;
       });
 
-      // Replace signature canvases with <img> so html2canvas positions them correctly
-      const origCanvases = Array.from(formElement.querySelectorAll('canvas'));
-      const clonedCanvases = Array.from(cloned.querySelectorAll('canvas'));
-      origCanvases.forEach((origCanvas, i) => {
-        const clonedCanvas = clonedCanvases[i] as HTMLCanvasElement;
-        if (!clonedCanvas) return;
-        try {
-          const dataUrl = (origCanvas as HTMLCanvasElement).toDataURL('image/png');
-          const img = document.createElement('img');
-          img.src = dataUrl;
-          img.style.width = '100%';
-          img.style.height = '100%';
-          img.style.display = 'block';
-          clonedCanvas.parentNode?.replaceChild(img, clonedCanvas);
-        } catch {
-          // tainted canvas — skip
-        }
+      // Replace canvases with pre-captured snapshots (avoids mobile canvas clearing)
+      cloned.querySelectorAll('canvas').forEach((clonedCanvas, i) => {
+        const dataUrl = canvasSnapshots[i];
+        if (!dataUrl) return;
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.display = 'block';
+        clonedCanvas.parentNode?.replaceChild(img, clonedCanvas);
       });
     },
   });
