@@ -85,6 +85,25 @@ async function buildPDF(
         const origEl = radioEls[idx];
         if (origEl) clonedEl.checked = origEl.checked;
       });
+
+      // Replace signature canvases with <img> so html2canvas positions them correctly
+      const origCanvases = Array.from(formElement.querySelectorAll('canvas'));
+      const clonedCanvases = Array.from(cloned.querySelectorAll('canvas'));
+      origCanvases.forEach((origCanvas, i) => {
+        const clonedCanvas = clonedCanvases[i] as HTMLCanvasElement;
+        if (!clonedCanvas) return;
+        try {
+          const dataUrl = (origCanvas as HTMLCanvasElement).toDataURL('image/png');
+          const img = document.createElement('img');
+          img.src = dataUrl;
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.display = 'block';
+          clonedCanvas.parentNode?.replaceChild(img, clonedCanvas);
+        } catch {
+          // tainted canvas — skip
+        }
+      });
     },
   });
 
