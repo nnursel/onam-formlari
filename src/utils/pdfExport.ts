@@ -21,27 +21,46 @@ async function buildPDF(
     useCORS: true,
     logging: false,
     backgroundColor: '#FFFFFF',
-    windowWidth: formElement.scrollWidth,
+    windowWidth: 1200,
     windowHeight: formElement.scrollHeight,
+    scrollX: 0,
+    scrollY: 0,
   });
 
-  const imgData = canvas.toDataURL('image/png');
   const pdf = new jsPDF('p', 'mm', 'a4');
-
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = pdf.internal.pageSize.getHeight();
   const margin = 10;
-  const imgWidth = pdfWidth - margin * 2;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  const usableWidth = pdfWidth - margin * 2;
+  const usableHeight = pdfHeight - margin * 2;
+  const totalImgHeightMM = (canvas.height * usableWidth) / canvas.width;
 
-  pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
-  let heightLeft = imgHeight - (pdfHeight - margin * 2);
+  let remainingMM = totalImgHeightMM;
+  let sourceY = 0;
+  let isFirstPage = true;
 
-  while (heightLeft > 0) {
-    const position = heightLeft - imgHeight + margin;
-    pdf.addPage();
-    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-    heightLeft -= pdfHeight - margin * 2;
+  while (remainingMM > 0) {
+    if (!isFirstPage) pdf.addPage();
+
+    const sliceHeightMM = Math.min(remainingMM, usableHeight);
+    const sliceHeightPx = Math.round((sliceHeightMM / totalImgHeightMM) * canvas.height);
+
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceHeightPx;
+    const ctx = sliceCanvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(canvas, 0, sourceY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+    }
+
+    const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+    pdf.addImage(sliceData, 'JPEG', margin, margin, usableWidth, sliceHeightMM);
+
+    sourceY += sliceHeightPx;
+    remainingMM -= sliceHeightMM;
+    isFirstPage = false;
   }
 
   return { pdf, filename };
